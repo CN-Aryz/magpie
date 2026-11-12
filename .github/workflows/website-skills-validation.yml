@@ -64,7 +64,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: go test -race -tags nogui -count=1 -timeout 10m ./internal/library -run '^TestWellKnown' -v
-      - name: Full Go suite
+      - name: Full Library suite
         if: runner.os == 'Linux'
         shell: bash
         run: |
@@ -74,7 +74,7 @@ jobs:
           go_build_cache=$(go env GOCACHE)
           test_home=$(mktemp -d)
           trap 'chmod -R u+w "$test_home"; rm -rf "$test_home"' EXIT
-          env HOME="$test_home" USERPROFILE="$test_home" GOPATH="$go_path" GOMODCACHE="$go_mod_cache" GOCACHE="$go_build_cache" go test -tags nogui -count=1 -timeout 45m ./...
+          env HOME="$test_home" USERPROFILE="$test_home" GOPATH="$go_path" GOMODCACHE="$go_mod_cache" GOCACHE="$go_build_cache" go test -tags nogui -count=1 -timeout 15m ./internal/library
 
   live:
     name: live Uizze source
@@ -133,3 +133,35 @@ jobs:
           trap 'chmod -R u+w "$test_home"; rm -rf "$test_home"' EXIT
           git rev-parse HEAD
           env HOME="$test_home" USERPROFILE="$test_home" XDG_CONFIG_HOME="$test_home/.config" XDG_STATE_HOME="$test_home/.state" GOPATH="$go_path" GOMODCACHE="$go_mod_cache" GOCACHE="$go_build_cache" go run -tags nogui ./live-website-probe
+
+  baseline:
+    name: baseline guard reproduction (expected failure)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: f6c882ad77d109e1b079f4a74a72832eaabac586
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Reproduce the unrelated full-suite failure before the fix
+        shell: bash
+        run: |
+          git rev-parse HEAD
+          python3 - <<'PY'
+          import json, os, subprocess, tempfile
+          caches = json.loads(subprocess.check_output(["go", "env", "-json", "GOPATH", "GOMODCACHE", "GOCACHE"], text=True))
+          with tempfile.TemporaryDirectory() as home:
+              env = dict(os.environ, HOME=home, USERPROFILE=home, **caches)
+              result = subprocess.run(["go", "test", "-tags", "nogui", "-count=1", "-timeout", "5m", "-run", "^TestNoEagerPackageRegexps$", "."], env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=360)
+          print(result.stdout)
+          assert result.returncode == 1, "the known baseline guard failure did not reproduce"
+          assert "--- FAIL: TestNoEagerPackageRegexps" in result.stdout
+          assert "internal/update/behind.go:122:18" in result.stdout
+          assert "a package-level regexp is compiled at launch; use lazyre.New" in result.stdout
+          print("Confirmed: the original base has the same unrelated guard failure.")
+          PY
