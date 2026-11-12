@@ -33,4 +33,4 @@ jobs:
           go_build_cache=$(go env GOCACHE)
           test_home=$(mktemp -d)
           trap 'chmod -R u+w "$test_home"; rm -rf "$test_home"' EXIT
-          env HOME="$test_home" USERPROFILE="$test_home" GOPATH="$go_path" GOMODCACHE="$go_mod_cache" GOCACHE="$go_build_cache" go test -tags nogui -count=1 -timeout 10m ./internal/library -run '^TestWellKnownSourceInstallsAllFiles$' -v
+          env HOME="$test_home" USERPROFILE="$test_home" GOPATH="$go_path" GOMODCACHE="$go_mod_cache" GOCACHE="$go_build_cache" go test -tags nogui -count=1 -timeout 10m ./internal/library -run '^TestWellKnown' -v
