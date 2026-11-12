@@ -1,0 +1,36 @@
+name: Website skills validation
+
+on:
+  push:
+    branches: [ci/website-skill-validation]
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/website-skill-sources
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Source revision
+        run: git rev-parse HEAD
+      - name: Formatting
+        run: |
+          gofmt -d internal/library/skillwellknown_test.go
+          test -z "$(gofmt -l internal/library/skillwellknown_test.go)"
+      - name: Reproduce website source regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          go_path=$(go env GOPATH)
+          go_mod_cache=$(go env GOMODCACHE)
+          go_build_cache=$(go env GOCACHE)
+          test_home=$(mktemp -d)
+          trap 'chmod -R u+w "$test_home"; rm -rf "$test_home"' EXIT
+          env HOME="$test_home" USERPROFILE="$test_home" GOPATH="$go_path" GOMODCACHE="$go_mod_cache" GOCACHE="$go_build_cache" go test -tags nogui -count=1 -timeout 10m ./internal/library -run '^TestWellKnownSourceInstallsAllFiles$' -v
